@@ -41,6 +41,8 @@ Mark false positives clearly in your synthesis instead of passing them on.
 
 Show the raw council output, then your own synthesis (see below). Offer a follow-up `council_discuss` round only if there are real unresolved points.
 
+**If you are in plan mode:** The review is still a plan. Write the synthesized findings (with false positives filtered out) into the plan file, use `AskUserQuestion` for clarifying questions about scope/priorities, and use `ExitPlanMode` to request approval. Do NOT skip the plan mode mechanisms just because the council was involved — the council is input, the plan file is output.
+
 ## Required system_context (copy verbatim into council_ask)
 
 ```
