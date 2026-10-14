@@ -34,7 +34,7 @@ Guide the user through setting up their API keys. **NEVER ask the user to paste 
    - Which Gemini models are free-tier vs paid-tier
    - How to override models per complexity level
 
-5. **After the user confirms they've saved the keys**, validate by calling `ask_chatgpt` and `ask_gemini` with a simple "Say hello in one sentence" prompt. Report which providers work.
+5. **After the user confirms they've saved the keys**, validate by calling the `chatgpt` and `gemini` tools with a simple "Say hello in one sentence" prompt. Report which providers work.
 
 ## Important
 
@@ -42,4 +42,4 @@ Guide the user through setting up their API keys. **NEVER ask the user to paste 
 - **NEVER** read the .env file contents - only check if the file exists
 - Only use the MCP tools to validate that keys work (the server reads them internally)
 - Both keys are optional - the council works with just one provider too
-- If `gemini-3*-preview` models fail with "quota exceeded", that's because they require Gemini paid tier. Recommend `gemini-2.5-flash` which works on free tier.
+- If `gemini-4-argon` (the `high` default) fails with "quota exceeded", that's because it requires the Gemini paid tier. Recommend setting `COUNCIL_GEMINI_HIGH=gemini-3.8-flash`, which works on the free tier.
