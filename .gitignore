@@ -1,5 +1,7 @@
 node_modules/
-dist/
+# dist/server.js is a committed bundle: the plugin runs straight from the clone
+dist/*
+!dist/server.js
 .env
 *.tsbuildinfo
 .claude/

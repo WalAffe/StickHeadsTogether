@@ -1,8 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { homedir } from "node:os";
-import type { ProviderResult, Complexity } from "./providers.js";
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { resolve } from "node:path";
+import { CONFIG_DIR, type Complexity, type Provider } from "./config.js";
+import type { Message, ProviderResult } from "./providers.js";
 
 export interface Round {
   roundNumber: number;
@@ -19,72 +27,55 @@ export interface Session {
   rounds: Round[];
 }
 
-const CONFIG_DIR = resolve(
-  process.env.COUNCIL_CONFIG_DIR?.replace("~", homedir()) ??
-    resolve(homedir(), ".config", "stick-heads-together"),
-);
-const SESSIONS_FILE = resolve(CONFIG_DIR, "sessions.json");
-const TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+// One file per session, so parallel Claude sessions never overwrite each other.
+// A single session is assumed to be used sequentially, one round at a time.
+const SESSIONS_DIR = resolve(CONFIG_DIR, "sessions");
+const TTL_MS = 2 * 60 * 60 * 1000; // 2 hours since the last round (file mtime)
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-interface SessionsFile {
-  sessions: Record<string, Session>;
-}
+const fileFor = (id: string) => resolve(SESSIONS_DIR, `${id}.json`);
 
-function readSessions(): Map<string, Session> {
-  if (!existsSync(SESSIONS_FILE)) return new Map();
+function cleanup(): void {
+  let names: string[];
   try {
-    const raw = readFileSync(SESSIONS_FILE, "utf-8");
-    const parsed = JSON.parse(raw) as SessionsFile;
-    return new Map(Object.entries(parsed.sessions ?? {}));
+    names = readdirSync(SESSIONS_DIR);
   } catch {
-    return new Map();
+    return; // no sessions yet
   }
-}
-
-function writeSessions(map: Map<string, Session>): void {
-  try {
-    mkdirSync(dirname(SESSIONS_FILE), { recursive: true });
-    const obj: SessionsFile = { sessions: Object.fromEntries(map) };
-    writeFileSync(SESSIONS_FILE, JSON.stringify(obj, null, 2), {
-      mode: 0o600,
-    });
-  } catch (err) {
-    // Non-fatal: session persistence failed, but in-memory still works
-    console.error("Failed to persist sessions:", err);
-  }
-}
-
-function cleanup(map: Map<string, Session>): void {
   const now = Date.now();
-  for (const [id, session] of map) {
-    if (now - new Date(session.createdAt).getTime() > TTL_MS) {
-      map.delete(id);
+  for (const name of names) {
+    const file = resolve(SESSIONS_DIR, name);
+    try {
+      if (now - statSync(file).mtimeMs > TTL_MS) rmSync(file);
+    } catch {
+      // already removed by another server process
     }
   }
 }
 
+// Not written to disk until the first round is saved.
 export function createSession(
   complexity: Complexity,
   systemContext?: string,
 ): Session {
-  const map = readSessions();
-  cleanup(map);
-  const session: Session = {
+  cleanup();
+  return {
     id: randomUUID(),
     createdAt: new Date().toISOString(),
     systemContext,
     complexity,
     rounds: [],
   };
-  map.set(session.id, session);
-  writeSessions(map);
-  return session;
 }
 
 export function getSession(id: string): Session | undefined {
-  const map = readSessions();
-  cleanup(map);
-  return map.get(id);
+  if (!UUID.test(id)) return undefined; // the id becomes a file name
+  cleanup();
+  try {
+    return JSON.parse(readFileSync(fileFor(id), "utf-8")) as Session;
+  } catch {
+    return undefined;
+  }
 }
 
 export function addRound(
@@ -100,37 +91,47 @@ export function addRound(
   };
   session.rounds.push(round);
 
-  const map = readSessions();
-  map.set(session.id, session);
-  writeSessions(map);
+  try {
+    mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 });
+    const file = fileFor(session.id);
+    writeFileSync(`${file}.tmp`, JSON.stringify(session, null, 2), {
+      mode: 0o600,
+    });
+    renameSync(`${file}.tmp`, file); // atomic: no half-written session files
+  } catch (err) {
+    // Non-fatal: this round's answers are still returned, only follow-ups break
+    console.error("Failed to persist session:", err);
+  }
 
   return round;
 }
 
+// Each model sees its own earlier answers as assistant turns. The other
+// model's answers are quoted into the next user turn, so no model mistakes
+// them for its own.
 export function buildMessages(
   session: Session,
   newMessage: string,
-): Array<{ role: "user" | "assistant" | "system"; content: string }> {
-  const messages: Array<{
-    role: "user" | "assistant" | "system";
-    content: string;
-  }> = [];
+  provider: Provider,
+): Message[] {
+  const messages: Message[] = session.systemContext
+    ? [{ role: "system", content: session.systemContext }]
+    : [];
 
-  if (session.systemContext) {
-    messages.push({ role: "system", content: session.systemContext });
-  }
-
+  let quoted = "";
   for (const round of session.rounds) {
-    messages.push({ role: "user", content: round.userMessage });
-    const combined = round.results
-      .filter((r) => r.response)
-      .map((r) => `[${r.provider} - ${r.model}]: ${r.response}`)
-      .join("\n\n");
-    if (combined) {
-      messages.push({ role: "assistant", content: combined });
+    messages.push({ role: "user", content: quoted + round.userMessage });
+    quoted = "";
+    for (const r of round.results) {
+      if (!r.response) continue;
+      if (r.provider === provider) {
+        messages.push({ role: "assistant", content: r.response });
+      } else {
+        quoted += `[Antwort von ${r.provider} (${r.model}) in Runde ${round.roundNumber}]:\n${r.response}\n\n`;
+      }
     }
   }
 
-  messages.push({ role: "user", content: newMessage });
+  messages.push({ role: "user", content: quoted + newMessage });
   return messages;
 }

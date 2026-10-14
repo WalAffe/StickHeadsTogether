@@ -1,6 +1,5 @@
 {
   "name": "stick-heads-together",
-  "version": "0.1.0",
   "description": "AI Council - Consult ChatGPT and Gemini in parallel during planning and reviews",
   "author": "Jonas Doerken",
   "repository": {
@@ -10,9 +9,10 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && bun build src/server.ts --target=node --outfile dist/server.js",
     "start": "node dist/server.js",
-    "dev": "tsc --watch"
+    "dev": "bun build src/server.ts --target=node --outfile dist/server.js --watch",
+    "test": "bun src/sessions.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

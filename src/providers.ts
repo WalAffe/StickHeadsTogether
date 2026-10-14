@@ -1,108 +1,60 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText, type LanguageModel } from "ai";
-import type { CouncilConfig } from "./config.js";
+import type { Complexity, CouncilConfig, Provider } from "./config.js";
 
-export type Complexity = "low" | "medium" | "high";
+export type Message = {
+  role: "user" | "assistant" | "system";
+  content: string;
+};
 
 export interface ProviderResult {
-  provider: "chatgpt" | "gemini";
+  provider: Provider;
   model: string;
   response: string;
   error?: string;
+  usage?: { inputTokens?: number; outputTokens?: number };
 }
 
-export function createProviders(config: CouncilConfig) {
-  const openai = config.openaiApiKey
-    ? createOpenAI({ apiKey: config.openaiApiKey })
-    : undefined;
+// Per provider call. High-tier models with a large briefing can take minutes.
+const TIMEOUT_MS = 5 * 60 * 1000;
 
-  const google = config.geminiApiKey
-    ? createGoogleGenerativeAI({ apiKey: config.geminiApiKey })
-    : undefined;
+const CLIENTS: Record<Provider, (apiKey: string) => (model: string) => LanguageModel> = {
+  chatgpt: (apiKey) => createOpenAI({ apiKey }),
+  gemini: (apiKey) => createGoogleGenerativeAI({ apiKey }),
+};
 
-  const modelFor = (
-    provider: "openai" | "google",
-    complexity: Complexity,
-  ): string =>
-    provider === "openai"
-      ? config.openaiModels[complexity]
-      : config.geminiModels[complexity];
+export function configuredProviders(config: CouncilConfig): Provider[] {
+  return (["chatgpt", "gemini"] as const).filter((p) => config.apiKeys[p]);
+}
 
-  async function ask(
-    model: LanguageModel,
-    provider: "chatgpt" | "gemini",
-    modelName: string,
-    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
-  ): Promise<ProviderResult> {
-    try {
-      const result = await generateText({ model, messages, maxOutputTokens: 16384 });
-      return { provider, model: modelName, response: result.text };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { provider, model: modelName, response: "", error: message };
-    }
+// Never throws: every failure comes back as `error`, so one provider can't
+// take down the other's answer.
+export async function ask(
+  config: CouncilConfig,
+  provider: Provider,
+  complexity: Complexity,
+  messages: Message[],
+  abortSignal?: AbortSignal,
+): Promise<ProviderResult> {
+  const model = config.models[provider][complexity];
+  const apiKey = config.apiKeys[provider];
+  if (!apiKey) {
+    return { provider, model, response: "", error: "API Key nicht konfiguriert" };
   }
 
-  async function askBoth(
-    complexity: Complexity,
-    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
-  ): Promise<ProviderResult[]> {
-    const openaiModel = modelFor("openai", complexity);
-    const googleModel = modelFor("google", complexity);
-    const tasks: Promise<ProviderResult>[] = [];
-
-    if (openai) {
-      tasks.push(ask(openai(openaiModel), "chatgpt", openaiModel, messages));
-    }
-    if (google) {
-      tasks.push(ask(google(googleModel), "gemini", googleModel, messages));
-    }
-
-    if (tasks.length === 0) {
-      return [];
-    }
-
-    const settled = await Promise.allSettled(tasks);
-    return settled.map((r) =>
-      r.status === "fulfilled"
-        ? r.value
-        : {
-            provider: "chatgpt" as const,
-            model: "unknown",
-            response: "",
-            error: String(r.reason),
-          },
-    );
+  try {
+    const result = await generateText({
+      model: CLIENTS[provider](apiKey)(model),
+      messages,
+      maxOutputTokens: 16384,
+      timeout: TIMEOUT_MS,
+      abortSignal,
+    });
+    const { inputTokens, outputTokens } = result.usage;
+    return { provider, model, response: result.text, usage: { inputTokens, outputTokens } };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { provider, model, response: "", error: message };
   }
-
-  async function askSingle(
-    provider: "chatgpt" | "gemini",
-    complexity: Complexity,
-    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
-  ): Promise<ProviderResult> {
-    if (provider === "chatgpt") {
-      const model = modelFor("openai", complexity);
-      if (!openai)
-        return {
-          provider,
-          model,
-          response: "",
-          error: "OpenAI API Key nicht konfiguriert",
-        };
-      return ask(openai(model), "chatgpt", model, messages);
-    } else {
-      const model = modelFor("google", complexity);
-      if (!google)
-        return {
-          provider,
-          model,
-          response: "",
-          error: "Gemini API Key nicht konfiguriert",
-        };
-      return ask(google(model), "gemini", model, messages);
-    }
-  }
-
-  return { askBoth, askSingle };
 }

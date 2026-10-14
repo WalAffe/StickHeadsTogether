@@ -1,35 +1,32 @@
+import type { Provider } from "./config.js";
 import type { ProviderResult } from "./providers.js";
 
-const PROVIDER_STYLE: Record<string, { emoji: string; name: string }> = {
+export const PROVIDER_STYLE: Record<Provider, { emoji: string; name: string }> = {
   chatgpt: { emoji: "🔵", name: "ChatGPT" },
   gemini: { emoji: "🔴", name: "Gemini" },
 };
+
+const tokens = (n: number | undefined) =>
+  n === undefined ? "?" : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
 export function formatResults(
   results: ProviderResult[],
   roundNumber: number,
 ): string {
-  const parts: string[] = [];
+  const parts = results.map((r) => {
+    const { emoji, name } = PROVIDER_STYLE[r.provider];
+    const usage = r.usage
+      ? ` · ${tokens(r.usage.inputTokens)} in / ${tokens(r.usage.outputTokens)} out`
+      : "";
+    const header = `## ${emoji} ${name} — ${r.model} — Runde ${roundNumber}${r.error ? " ⚠️ Fehler" : usage}`;
+    const body = r.error ? `**Fehler:** ${r.error}` : r.response;
+    return ["---", "", header, "", body, ""].join("\n");
+  });
 
-  for (const result of results) {
-    const style = PROVIDER_STYLE[result.provider] ?? {
-      emoji: "⚪",
-      name: result.provider,
-    };
-
-    const header = result.error
-      ? `## ${style.emoji} ${style.name} — ${result.model} — Runde ${roundNumber} ⚠️ Fehler`
-      : `## ${style.emoji} ${style.name} — ${result.model} — Runde ${roundNumber}`;
-
-    const body = result.error ? `**Fehler:** ${result.error}` : result.response;
-
-    parts.push([`---`, ``, header, ``, body, ``].join("\n"));
-  }
-
-  parts.push(`---`);
-  return parts.join("\n\n");
+  return [...parts, "---"].join("\n\n");
 }
 
+// The full id: discuss needs it verbatim.
 export function formatSessionInfo(sessionId: string, round: number): string {
-  return `**Session:** \`${sessionId.slice(0, 8)}\` · **Runde:** ${round}`;
+  return `**Session:** \`${sessionId}\` · **Runde:** ${round}`;
 }

@@ -5,7 +5,7 @@ description: Use when the user asks for a PR review, code review, or "reviewe di
 
 # PR Review via Council
 
-When the user asks for a PR review, use the council tools (`council_ask` / `council_discuss`) with a **fixed review schema** so ChatGPT and Gemini always respond in the same structure. This makes their answers comparable and avoids getting a different format each time.
+When the user asks for a PR review, use the council tools (`ask` / `discuss`) with a **fixed review schema** so ChatGPT and Gemini always respond in the same structure. This makes their answers comparable and avoids getting a different format each time.
 
 ## Workflow (STRICT ORDER — do not skip or reorder)
 
@@ -24,7 +24,7 @@ Only proceed to Phase 2 once you have actually read the code.
 
 **Never simplify, paraphrase, or reconstruct the code.** Send what's actually in the diff. If the diff is too large, send the most critical files/hunks verbatim and tell the council which parts you omitted and why — but never "simplify" by writing a plausible-looking version of the code. That's hallucinating the review target.
 
-Call `council_ask` with:
+Call `ask` with:
 - `complexity: "high"` — PR reviews warrant the best models
 - `system_context`: the review schema below, copied verbatim
 - `prompt`: PR title + description + **verbatim code from the diff** (or verbatim excerpts if the diff is too large)
@@ -39,11 +39,11 @@ Mark false positives clearly in your synthesis instead of passing them on.
 
 ### Phase 4: Present the results
 
-Show the raw council output, then your own synthesis (see below). Offer a follow-up `council_discuss` round only if there are real unresolved points.
+Show the raw council output, then your own synthesis (see below). Offer a follow-up `discuss` round only if there are real unresolved points.
 
 **If you are in plan mode:** The review is still a plan. Write the synthesized findings (with false positives filtered out) into the plan file, use `AskUserQuestion` for clarifying questions about scope/priorities, and use `ExitPlanMode` to request approval. Do NOT skip the plan mode mechanisms just because the council was involved — the council is input, the plan file is output.
 
-## Required system_context (copy verbatim into council_ask)
+## Required system_context (copy verbatim into ask)
 
 ```
 Du bist Senior Full-Stack Entwickler und reviewst einen Pull Request. Antworte auf Deutsch.
@@ -99,7 +99,7 @@ After both AIs answered:
    - **Übereinstimmungen:** Wo sind sich beide einig?
    - **Widersprüche:** Wo sagen sie Unterschiedliches?
    - **Top Prioritäten:** Die 3-5 wichtigsten Punkte aus beiden Reviews zusammen
-3. Ask the user: "Sollen wir eine Folgerunde `council_discuss` machen für [spezifisches Thema]?" — nur wenn es sich lohnt.
+3. Ask the user: "Sollen wir eine Folgerunde `discuss` machen für [spezifisches Thema]?" — nur wenn es sich lohnt.
 
 ## Optional: Review posten via gh CLI
 
