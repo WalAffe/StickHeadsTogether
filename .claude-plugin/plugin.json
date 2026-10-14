@@ -1,11 +1,17 @@
 {
   "name": "stick-heads-together",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "AI Council - Consult ChatGPT and Gemini in parallel during planning and reviews",
   "author": {
     "name": "Jonas Doerken"
   },
   "repository": "https://github.com/WalAffe/StickHeadsTogether",
   "license": "MIT",
-  "keywords": ["claude-code", "mcp", "ai-council", "chatgpt", "gemini", "pr-review"]
+  "keywords": ["claude-code", "mcp", "ai-council", "chatgpt", "gemini", "pr-review"],
+  "mcpServers": {
+    "council": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/server.js"]
+    }
+  }
 }

@@ -1,0 +1,14 @@
+{
+  "name": "stick-heads-together",
+  "owner": {
+    "name": "Jonas Doerken"
+  },
+  "description": "Single-plugin marketplace for the StickHeadsTogether AI council",
+  "plugins": [
+    {
+      "name": "stick-heads-together",
+      "source": "./",
+      "description": "AI Council - Consult ChatGPT and Gemini in parallel during planning and reviews"
+    }
+  ]
+}
